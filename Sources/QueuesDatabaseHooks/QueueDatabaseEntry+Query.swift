@@ -15,8 +15,16 @@ public extension QueueDatabaseEntry {
             /// This syntax is compatible with all supported SQL databases at the time of this writing.
             return sql.raw("""
                 SELECT
-                    COALESCE(SUM(IF(\(ident: "status")=\(literal: 0),\(literal: 1),\(literal: 0))),\(literal: 0)) AS \(ident: "queuedCount"),
-                    COALESCE(SUM(IF(\(ident: "status")=\(literal: 1),\(literal: 1),\(literal: 0))),\(literal: 0)) AS \(ident: "runningCount")
+                    COALESCE(
+                        SUM(
+                            CASE WHEN \(ident: "status") = \(literal: 0) THEN \(literal: 1) ELSE \(literal: 0) END
+                        ),\(literal: 0)
+                    ) AS \(ident: "queuedCount"),
+                    COALESCE(
+                        SUM(
+                            CASE WHEN \(ident: "status") = \(literal: 1) THEN \(literal: 1) ELSE \(literal: 0) END
+                        ),\(literal: 0)
+                    ) AS \(ident: "runningCount")
                 FROM
                     \(ident: QueueDatabaseEntry.schema)
                 """)
@@ -40,21 +48,27 @@ public extension QueueDatabaseEntry {
     ///   those jobs which completed successfully within the past given number of hours, as of the time of the query.
     static func getCompletedJobsForTimePeriod(db: Database, hours: Int) -> EventLoopFuture<CompletedJobStatusResponse> {
         precondition(hours > 0, "Can not request job data for jobs in the future.")
-        
+
         let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: true)
 
         if let sql = db as? SQLDatabase {
             return sql.raw("""
                 SELECT
                     COUNT(\(ident: "id")) AS \(ident: "completedJobs"),
-                    COALESCE(SUM(IF(\(ident: "status")=\(literal: 2),\(literal: 1),\(literal: 0))) / COUNT(\(ident: "id")),\(literal: 1))
-                        AS \(ident: "percentSuccess")
+                    COALESCE(
+                        SUM(
+                            CASE WHEN \(ident: "status") = \(literal: Int(2)) THEN \(literal: Int(1)) ELSE \(literal: Int(0)) END
+                        ) / COUNT(\(ident: "id")),
+                        \(bind: Double(1))
+                    )
+                    AS \(ident: "percentSuccess")
                 FROM
                     \(ident: QueueDatabaseEntry.schema)
                 WHERE
                     \(ident: "completedAt")>=\(bind: deadline)
                 """)
-            .first(decoding: CompletedJobStatusResponse.self).unwrap(or: Abort(.badRequest, reason: "Could not get data for status"))
+            .first(decoding: CompletedJobStatusResponse.self)
+            .unwrap(or: Abort(.badRequest, reason: "Could not get data for status"))
         } else {
             return QueueDatabaseEntry.query(on: db).filter(\.$completedAt >= deadline).count(\.$id).flatMap { completedJobs in
                 QueueDatabaseEntry.query(on: db).filter(\.$completedAt >= deadline).filter(\.$status == .success).count(\.$id).map { successfulJobs in
@@ -80,7 +94,7 @@ public extension QueueDatabaseEntry {
     ///   of the time of the query.
     static func getTimingDataForJobs(db: Database, hours: Int, jobName: String? = nil) -> EventLoopFuture<JobsTimingResponse> {
         precondition(hours > 0, "Can not request job data for jobs in the future.")
-        
+
         let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: true)
 
         if let sql = db as? SQLDatabase {
@@ -95,7 +109,7 @@ public extension QueueDatabaseEntry {
                     assertionFailure("You're using an unsupported SQL dialect (\(name)), try again.")
                     return sql.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Unsupported SQL database dialect '\(name)'"))
             }
-            
+
             return sql.raw("""
                 SELECT
                     COALESCE(AVG(\(dateDiffExpression("completedAt", "dequeuedAt"))), \(literal: 0)) AS \(ident: "avgRunTime"),
