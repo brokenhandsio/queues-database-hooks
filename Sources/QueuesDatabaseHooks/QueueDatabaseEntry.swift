@@ -124,9 +124,21 @@ extension QueueDatabaseEntry {
         maxRetryCount: Int, delayUntil: Date?, dispatchTimestamp: Date,
         on database: Database
     ) -> EventLoopFuture<Void> {
-        return QueueDatabaseEntry(jobId: jobId, jobName: jobName, queueName: queueName, payload: payload, maxRetryCount: maxRetryCount, delayUntil: delayUntil, queuedAt: dispatchTimestamp, dequeuedAt: nil, completedAt: nil, errorString: nil, status: .queued).create(on: database)
+        return QueueDatabaseEntry(
+            jobId: jobId,
+            jobName: jobName,
+            queueName: queueName,
+            payload: payload,
+            maxRetryCount: maxRetryCount,
+            delayUntil: delayUntil,
+            queuedAt: dispatchTimestamp,
+            dequeuedAt: nil,
+            completedAt: nil,
+            errorString: nil,
+            status: .queued
+        ).create(on: database)
     }
-    
+
     /// Dequeuing an already-running or completed job only sets the dequeuing timestamp iff it wasn't already set.
     internal static func recordDequeue(
         jobId: String, dequeueTimestamp: Date, on database: Database
@@ -142,11 +154,21 @@ extension QueueDatabaseEntry {
                 """)
                 .run()
         } else {
-            return QueueDatabaseEntry.query(on: database).set(\.$dequeuedAt, to: dequeueTimestamp).filter(\.$dequeuedAt == nil).filter(\.$jobId == jobId).update()
-                .flatMap { QueueDatabaseEntry.query(on: database).set(\.$status, to: .running).filter(\.$status == .queued).filter(\.$jobId == jobId).update() }
+            return QueueDatabaseEntry.query(on: database)
+                .set(\.$dequeuedAt, to: dequeueTimestamp)
+                .filter(\.$dequeuedAt == nil)
+                .filter(\.$jobId == jobId)
+                .update()
+                .flatMap {
+                    QueueDatabaseEntry.query(on: database)
+                    .set(\.$status, to: .running)
+                    .filter(\.$status == .queued)
+                    .filter(\.$jobId == jobId)
+                    .update()
+                }
         }
     }
-    
+
     /// Completing an already-completed job has no effect, even if the final status differs (only the first completion
     /// takes effect, in other words). Completing a still-queued job updates the dequeuing timestamp as well.
     internal static func recordCompletion(
@@ -173,49 +195,30 @@ extension QueueDatabaseEntry {
     }
 }
 
-public struct QueueDatabaseEntryMigration: Migration {
+public struct QueueDatabaseEntryMigration: AsyncMigration {
     public init() { }
 
-    public func prepare(on database: Database) -> EventLoopFuture<Void> {
-        database.schema(QueueDatabaseEntry.schema)
+    public func prepare(on database: Database) async throws {
+        try await database.schema(QueueDatabaseEntry.schema)
             .field(.id, .uuid, .identifier(auto: false))
             .field("jobId", .string, .required)
             .field("jobName", .string, .required)
             .field("queueName", .string, .required)
-            .field("payload", .json, .required)
+            .field("payload", .data, .required)
             .field("maxRetryCount", .int, .required)
             .field("delayUntil", .datetime)
             .field("queuedAt", .datetime, .required)
             .field("dequeuedAt", .datetime)
             .field("completedAt", .datetime)
             .field("errorString", .string)
-            .field("status", .int8, .required)
+            .field("status", .int, .required)
             .field("createdAt", .datetime)
             .field("updatedAt", .datetime)
             .unique(on: "jobId")
             .create()
     }
 
-    public func revert(on database: Database) -> EventLoopFuture<Void> {
-        database.schema(QueueDatabaseEntry.schema).delete()
-    }
-}
-
-/// A migration intended for users updating from 0.2.0 to any later prerelease version.
-///
-/// - Important: If a 1.0.0 release happens, delete this first!
-public struct QueueDatabaseEntryUpgradeFrom_0_2_0: Migration {
-    public init() { }
-    
-    public func prepare(on database: Database) -> EventLoopFuture<Void> {
-        database.schema(QueueDatabaseEntry.schema)
-            .unique(on: "jobId")
-            .update()
-    }
-    
-    public func revert(on database: Database) -> EventLoopFuture<Void> {
-        database.schema(QueueDatabaseEntry.schema)
-            .deleteUnique(on: "jobId")
-            .update()
+    public func revert(on database: Database) async throws {
+        try await database.schema(QueueDatabaseEntry.schema).delete()
     }
 }

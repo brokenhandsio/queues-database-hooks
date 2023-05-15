@@ -1,10 +1,10 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.8
 import PackageDescription
 
 let package = Package(
     name: "queues-database-hooks",
     platforms: [
-       .macOS(.v10_15)
+       .macOS(.v12)
     ],
     products: [
         .library(
@@ -15,7 +15,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/queues.git", from: "1.5.0"),
         .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.7.0"),
         .package(url: "https://github.com/vapor/sql-kit.git", from: "3.7.0"),
-        
+
         // Test-only dependencies
         .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.0.0"),
         .package(url: "https://github.com/vapor/vapor.git", from: "4.0.0"),
