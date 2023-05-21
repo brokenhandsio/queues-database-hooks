@@ -49,7 +49,7 @@ public extension QueueDatabaseEntry {
     static func getCompletedJobsForTimePeriod(db: Database, hours: Int) -> EventLoopFuture<CompletedJobStatusResponse> {
         precondition(hours > 0, "Can not request job data for jobs in the future.")
 
-        let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: true)
+        let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: false)
 
         if let sql = db as? SQLDatabase {
             return sql.raw("""
@@ -95,7 +95,7 @@ public extension QueueDatabaseEntry {
     static func getTimingDataForJobs(db: Database, hours: Int, jobName: String? = nil) -> EventLoopFuture<JobsTimingResponse> {
         precondition(hours > 0, "Can not request job data for jobs in the future.")
 
-        let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: true)
+        let deadline = Calendar.current.date(byAdding: .hour, value: -hours, to: Date(), wrappingComponents: false)
 
         if let sql = db as? SQLDatabase {
             let jobNameClause: SQLQueryString = jobName.map { "\(ident: "jobName")=\(bind: $0)" } ?? "\(literal: 1)=\(literal: 1)"
